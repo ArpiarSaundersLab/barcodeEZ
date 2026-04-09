@@ -1,27 +1,28 @@
 import Bio.Restriction as RS
 import random
+import gzip
+from importlib.resources import files
 
-with open('./100k_barcodes.txt', 'r') as f:
+with gzip.open(str(files('barcodeEZ.bc_gen').joinpath('20k_barcodes_60mers.fa.gz')), 'rt') as f:
     bc_pool = []
     for i,line in enumerate(f):
         line = line.strip()
         if i % 2 == 1:
             bc_pool.append(line)
 
-class barcodeEZ:
+class Barcodes:
     
     def __init__(self, n_sites=None, custom_enzymes=None):
         self.n_sites = n_sites
         self.sites = {}
-        # default site enzymes (a.31):
+        # default site enzymes (Assembly Plasmid):
         self.site_enzymes = ['EcoRI', 'BamHI', 'NheI', 'XhoI', 'PlutI', 'AgeI', 'MluI']
         self._validate_enzymes(custom_enzymes)
         self._build_sites(n_sites)
         self.positions = 1
         self.overhangs = ['TGCC', 'GCAA', 'AGGA'] # add 6 total for each site
         self.avoid_seqs = [] # rs and sequences to avoid
-        self.bc_pool = bc_pool
-    
+        self._bc_pool = bc_pool.copy()    
     def _validate_enzymes(self, enzymes):
         self._custom_enz = False
         if enzymes is not None and not isinstance(enzymes, list): 
@@ -63,6 +64,7 @@ class barcodeEZ:
     
     def add_positions(self, *, n_per_site):
         print(f"Method to add {n_per_site} positions within sites")
+        # method to add n_per_site number of positions within each site
         # use default sticky overhangs for middle positions
         # allow users to customize this eventually
 
@@ -84,30 +86,33 @@ class barcodeEZ:
         print('Generating barcodes...')
         # generate barcodes for each site
         if bc_len > 60:
-            # implement concatenation for longer barcodes
-            raise ValueError('Barcode length must be 60 or less.')
+            # implement concatenation of bc_pool sequences for longer barcodes
+            raise ValueError('Barcode length must be 60 or less.') # avoid for now
         for i in range(self.n_sites):
             site_id = i + 1
-            self.sites[site_id]['bc'] = []
+            self.sites[site_id]['bc_only'] = []
             for j in range(n_barcodes):
-                index = random.randint(0, len(self.bc_pool)-1)
-                bc_insert = self.bc_pool.pop(index)[0:bc_len]
-                self.sites[site_id]['bc'].append(bc_insert) 
+                index = random.randint(0, len(self._bc_pool)-1)
+                bc_insert = self._bc_pool.pop(index)[0:bc_len] # remove from pool once used
+                self.sites[site_id]['bc_only'].append(bc_insert)
+            self.sites[site_id]['bc'] = self.sites[site_id]['bc_only'].copy()
 
     def add_fixed_sequence(self, seq, site, side):
-        ## add logic so that users don't add fixed_sequence multiple times
-        ## if this function has already been called for left:
-        ## use original bc to append to
-        ## Same logic for right (needs to be separate in case user calls this twice for left and right)
         if side not in ['left', 'right']:
             raise ValueError('Side must be either "left" or "right".')
         if site not in self.sites:
             raise ValueError(f'Site {site} does not exist.')
-        update_BCs = []
-        for bc in self.sites[site]['bc']:
-            if side == 'left':
-                update_BCs.append(seq + bc)
-            elif side == 'right':
-                update_BCs.append(bc + seq)
-        self.sites[site]['bc_only'] = self.sites[site]['bc']
-        self.sites[site]['bc'] = update_BCs
+        self.sites[site].setdefault('fixed_left', '')
+        self.sites[site].setdefault('fixed_right', '')
+        if side == 'left':
+            self.sites[site]['fixed_left'] = seq
+        else:
+            self.sites[site]['fixed_right'] = seq
+        self._rebuild_bc(site)
+
+    def _rebuild_bc(self, site):
+        left = self.sites[site].get('fixed_left', '')
+        right = self.sites[site].get('fixed_right', '')
+        self.sites[site]['bc'] = [
+            left + bc + right for bc in self.sites[site]['bc_only']
+        ]

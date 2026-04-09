@@ -1,2 +1,8 @@
+*.DS_Store
 */dev_explore
-.DS_Store
+*.egg
+*.egg-info
+__pycache__
+site/
+.vscode
+*/bc_gen

@@ -1,8 +1,9 @@
 import random
 from rapidfuzz import distance
+import os
 
 # generate n barcodes
-n = 100000
+n = 20000  # number of barcodes to generate
 bc_length = 60
 
 def genBC(count: int, seq_len: int):#, out_file: str):
@@ -37,12 +38,15 @@ def genBC(count: int, seq_len: int):#, out_file: str):
         
         barcodes['bc'].append(seq)
 
-        if len(barcodes['bc']) % 500 == 0:
+        if len(barcodes['bc']) % 1000 == 0:
             print(f'{len(barcodes["bc"])} barcodes generated...')
     return barcodes
 
 BCs = genBC(n, bc_length)
 
-with open(f'{str(int(n/1000))}k_barcodes_{bc_length}mers.fa', 'w') as out:
+fh_out = f'{str(int(n/1000))}k_barcodes_{bc_length}mers.fa'
+with open(fh_out, 'w') as out:
     for i,bc in enumerate(BCs['bc']):
         out.write(f'>BC_{i+1}\n{bc}\n')
+
+os.system(f'gzip {fh_out}')

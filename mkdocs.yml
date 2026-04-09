@@ -1,0 +1,33 @@
+site_name: BarcodeEZ
+site_url: https://goodez.github.io/BarcodeEZ/
+repo_url: https://github.com/goodez/BarcodeEZ
+edit_uri: edit/main/docs/
+
+theme:
+  name: readthedocs
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.sections
+    - content.code.copy
+    - content.tabs.link
+    - search.suggest
+    - search.highlight
+
+nav:
+  - Home: index.md
+  - Getting Started:
+      - Installation: getting-started/installation.md
+      - Quickstart: getting-started/quickstart.md
+  - Usage:
+      - CLI Reference: usage/cli.md
+  - Changelog: changelog.md
+
+markdown_extensions:
+  - admonition
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.tabbed
+  - pymdownx.highlight
+  - pymdownx.superfences
