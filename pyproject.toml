@@ -14,6 +14,7 @@ requires-python = ">=3.8"
 dependencies = [
     "biopython >= 1.81",
     "rapidfuzz >= 3.9.6",
+    "pandas",
 ]
 
 readme = "README.md"

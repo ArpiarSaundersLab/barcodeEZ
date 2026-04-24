@@ -2,6 +2,7 @@ import Bio.Restriction as RS
 import random
 import gzip
 from importlib.resources import files
+import pandas as pd
 
 with gzip.open(str(files('barcodeEZ.bc_gen').joinpath('20k_barcodes_60mers.fa.gz')), 'rt') as f:
     bc_pool = []
@@ -9,6 +10,35 @@ with gzip.open(str(files('barcodeEZ.bc_gen').joinpath('20k_barcodes_60mers.fa.gz
         line = line.strip()
         if i % 2 == 1:
             bc_pool.append(line)
+
+class Site:
+
+    def __init__(self, site_id, left_enzyme, right_enzyme):
+        self.id = site_id
+        self.left_enzyme = left_enzyme
+        self.right_enzyme = right_enzyme
+        self.bc_only = []
+        self.bc = []
+        self.fixed_left = ''
+        self.fixed_right = ''
+        self.overhangs = []
+
+    def __repr__(self):
+        n_bc = len(self.bc)
+        bc_len = len(self.bc[0]) if self.bc else 0
+        return (f"Site {self.id}: {self.left_enzyme} -- SITE{self.id} -- {self.right_enzyme} "
+                f"| {n_bc} barcodes, {bc_len}bp")
+
+    def add_fixed_sequence(self, seq, side):
+        if side == 'left':
+            self.fixed_left = seq
+        else:
+            self.fixed_right = seq
+        self._rebuild_bc()
+
+    def _rebuild_bc(self):
+        self.bc = [self.fixed_left + bc + self.fixed_right for bc in self.bc_only]
+
 
 class Barcodes:
     
@@ -22,7 +52,8 @@ class Barcodes:
         self.positions = 1
         self.overhangs = ['TGCC', 'GCAA', 'AGGA'] # add 6 total for each site
         self.avoid_seqs = [] # rs and sequences to avoid
-        self._bc_pool = bc_pool.copy()    
+        self._bc_pool = bc_pool.copy()
+
     def _validate_enzymes(self, enzymes):
         self._custom_enz = False
         if enzymes is not None and not isinstance(enzymes, list): 
@@ -57,10 +88,8 @@ class Barcodes:
             self.site_enzymes = self.site_enzymes[0:(n+1)]
         
         for i in range(self.n_sites):
-            site_id = i+1
-            self.sites[site_id] = {'left': self.site_enzymes[i],
-                                   'right': self.site_enzymes[i+1],
-                                   'bc': None}
+            site_id = i + 1
+            self.sites[site_id] = Site(site_id, self.site_enzymes[i], self.site_enzymes[i+1])
     
     def add_positions(self, *, n_per_site):
         print(f"Method to add {n_per_site} positions within sites")
@@ -74,12 +103,12 @@ class Barcodes:
             current_site = self.sites[i+1]
             if (i+1) == 1:
                 print(
-                    f'{current_site["left"]} - \033[31mSITE{i+1}\033[0m - '
-                    f'{current_site["right"]} - ', end='')
+                    f'{current_site.left_enzyme} - \033[31mSITE{i+1}\033[0m - '
+                    f'{current_site.right_enzyme} - ', end='')
             elif i == max(range(self.n_sites)):
-                print(f'\033[31mSITE{i+1}\033[0m - {current_site["right"]} -----')
+                print(f'\033[31mSITE{i+1}\033[0m - {current_site.right_enzyme} -----')
             else:
-                print(f'\033[31mSITE{i+1}\033[0m - {current_site["right"]} - ',
+                print(f'\033[31mSITE{i+1}\033[0m - {current_site.right_enzyme} - ',
                       end='')
     
     def generate_barcodes(self, bc_len, n_barcodes):
@@ -90,29 +119,32 @@ class Barcodes:
             raise ValueError('Barcode length must be 60 or less.') # avoid for now
         for i in range(self.n_sites):
             site_id = i + 1
-            self.sites[site_id]['bc_only'] = []
+            site = self.sites[site_id]
+            site.bc_only = []
             for j in range(n_barcodes):
                 index = random.randint(0, len(self._bc_pool)-1)
                 bc_insert = self._bc_pool.pop(index)[0:bc_len] # remove from pool once used
-                self.sites[site_id]['bc_only'].append(bc_insert)
-            self.sites[site_id]['bc'] = self.sites[site_id]['bc_only'].copy()
+                site.bc_only.append(bc_insert)
+            site.bc = site.bc_only.copy()
 
     def add_fixed_sequence(self, seq, site, side):
         if side not in ['left', 'right']:
             raise ValueError('Side must be either "left" or "right".')
         if site not in self.sites:
             raise ValueError(f'Site {site} does not exist.')
-        self.sites[site].setdefault('fixed_left', '')
-        self.sites[site].setdefault('fixed_right', '')
-        if side == 'left':
-            self.sites[site]['fixed_left'] = seq
-        else:
-            self.sites[site]['fixed_right'] = seq
-        self._rebuild_bc(site)
+        self.sites[site].add_fixed_sequence(seq, side)
 
-    def _rebuild_bc(self, site):
-        left = self.sites[site].get('fixed_left', '')
-        right = self.sites[site].get('fixed_right', '')
-        self.sites[site]['bc'] = [
-            left + bc + right for bc in self.sites[site]['bc_only']
-        ]
+    def view(self):
+        cols = ['site', 'position', 'barcode', 'barcode_assembled']
+        rows = []
+        for site in self.sites.values():
+            for raw, assembled in zip(site.bc_only, site.bc):
+                rows.append({
+                    'site': site.id,
+                    'position': 'A',
+                    'barcode': raw,
+                    'barcode_assembled': assembled,
+                })
+        if not rows:
+            return pd.DataFrame(columns=cols)
+        return pd.DataFrame(rows).copy()
