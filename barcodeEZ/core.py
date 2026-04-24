@@ -1,3 +1,4 @@
+import math
 import Bio.Restriction as RS
 import random
 import gzip
@@ -50,8 +51,8 @@ class Barcodes:
         self._validate_enzymes(custom_enzymes)
         self._build_sites(n_sites)
         self.positions = 1
-        self.overhangs = ['TGCC', 'GCAA', 'AGGA'] # add 6 total for each site
-        self.avoid_seqs = [] # rs and sequences to avoid
+        self.overhangs = ['TGCC', 'GCAA', 'AGGA'] # currently this only allows 4 internal positions
+        self.avoid_seqs = [] # rs and sequences to avoid (sequences, not RE names)
         self._bc_pool = bc_pool.copy()
 
     def _validate_enzymes(self, enzymes):
@@ -111,20 +112,22 @@ class Barcodes:
                 print(f'\033[31mSITE{i+1}\033[0m - {current_site.right_enzyme} - ',
                       end='')
     
+    def _draw_bc(self, bc_len):
+        n_segs = math.ceil(bc_len / 60)
+        segments = []
+        for _ in range(n_segs):
+            index = random.randint(0, len(self._bc_pool)-1)
+            segments.append(self._bc_pool.pop(index))
+        return ''.join(segments)[:bc_len]
+
     def generate_barcodes(self, bc_len, n_barcodes):
         print('Generating barcodes...')
-        # generate barcodes for each site
-        if bc_len > 60:
-            # implement concatenation of bc_pool sequences for longer barcodes
-            raise ValueError('Barcode length must be 60 or less.') # avoid for now
         for i in range(self.n_sites):
             site_id = i + 1
             site = self.sites[site_id]
             site.bc_only = []
-            for j in range(n_barcodes):
-                index = random.randint(0, len(self._bc_pool)-1)
-                bc_insert = self._bc_pool.pop(index)[0:bc_len] # remove from pool once used
-                site.bc_only.append(bc_insert)
+            for _ in range(n_barcodes):
+                site.bc_only.append(self._draw_bc(bc_len))
             site.bc = site.bc_only.copy()
 
     def add_fixed_sequence(self, seq, site, side):
