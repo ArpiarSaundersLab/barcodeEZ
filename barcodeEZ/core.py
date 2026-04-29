@@ -12,23 +12,27 @@ with gzip.open(str(files('barcodeEZ.bc_gen').joinpath('20k_barcodes_60mers.fa.gz
         if i % 2 == 1:
             bc_pool.append(line)
 
+_POSITION_LABELS = list('ABCDEFGH')
+
+
 class Site:
 
     def __init__(self, site_id, left_enzyme, right_enzyme):
         self.id = site_id
         self.left_enzyme = left_enzyme
         self.right_enzyme = right_enzyme
-        self.bc_only = []
-        self.bc = []
         self.fixed_left = ''
         self.fixed_right = ''
-        self.overhangs = []
+        # positions dict: label -> {'bc_only': [], 'bc': [], 'left_oh': str|None, 'right_oh': str|None}
+        # left_oh/right_oh are None at enzyme boundaries, 4bp strings for internal overhangs
+        self.positions = {'A': {'bc_only': [], 'bc': [], 'left_oh': None, 'right_oh': None}}
 
     def __repr__(self):
-        n_bc = len(self.bc)
-        bc_len = len(self.bc[0]) if self.bc else 0
+        n_pos = len(self.positions)
+        n_bc = sum(len(p['bc']) for p in self.positions.values())
+        bc_len = next((len(p['bc'][0]) for p in self.positions.values() if p['bc']), 0)
         return (f"Site {self.id}: {self.left_enzyme} -- SITE{self.id} -- {self.right_enzyme} "
-                f"| {n_bc} barcodes, {bc_len}bp")
+                f"| {n_pos} position(s), {n_bc} barcodes, {bc_len}bp")
 
     def add_fixed_sequence(self, seq, side):
         if side == 'left':
@@ -38,7 +42,10 @@ class Site:
         self._rebuild_bc()
 
     def _rebuild_bc(self):
-        self.bc = [self.fixed_left + bc + self.fixed_right for bc in self.bc_only]
+        for pos_data in self.positions.values():
+            pos_data['bc'] = [
+                self.fixed_left + bc + self.fixed_right for bc in pos_data['bc_only']
+            ]
 
 
 class Barcodes:
@@ -50,9 +57,8 @@ class Barcodes:
         self.site_enzymes = ['EcoRI', 'BamHI', 'NheI', 'XhoI', 'PlutI', 'AgeI', 'MluI']
         self._validate_enzymes(custom_enzymes)
         self._build_sites(n_sites)
-        self.positions = 1
         self.overhangs = ['TGCC', 'GCAA', 'AGGA', 'TGTG',
-                          'GAGC', 'ATTC', 'ATAG'] # allows <= 8 internal positions
+                          'GAGC', 'ATTC', 'ATAG'] # 7 overhangs support up to 8 positions
         self.avoid_seqs = [] # rs and sequences to avoid (sequences, not RE names)
         self._bc_pool = bc_pool.copy()
 
@@ -94,10 +100,20 @@ class Barcodes:
             self.sites[site_id] = Site(site_id, self.site_enzymes[i], self.site_enzymes[i+1])
     
     def add_positions(self, *, n_per_site):
-        print(f"Method to add {n_per_site} positions within sites")
-        # method to add n_per_site number of positions within each site
-        # use default sticky overhangs for middle positions
-        # allow users to customize this eventually
+        if not isinstance(n_per_site, int) or n_per_site < 1:
+            raise TypeError('n_per_site must be a positive integer.')
+        if n_per_site > 8:
+            raise ValueError('n_per_site must be <= 8.')
+        labels = _POSITION_LABELS[:n_per_site]
+        for site in self.sites.values():
+            site.positions = {}
+            for i, label in enumerate(labels):
+                site.positions[label] = {
+                    'bc_only': [],
+                    'bc': [],
+                    'left_oh': self.overhangs[i - 1] if i > 0 else None,
+                    'right_oh': self.overhangs[i] if i < n_per_site - 1 else None,
+                }
 
     def print_structure(self):
         print('----- ',end='')
@@ -123,13 +139,10 @@ class Barcodes:
 
     def generate_barcodes(self, bc_len, n_barcodes):
         print('Generating barcodes...')
-        for i in range(self.n_sites):
-            site_id = i + 1
-            site = self.sites[site_id]
-            site.bc_only = []
-            for _ in range(n_barcodes):
-                site.bc_only.append(self._draw_bc(bc_len))
-            site.bc = site.bc_only.copy()
+        for site in self.sites.values():
+            for pos_data in site.positions.values():
+                pos_data['bc_only'] = [self._draw_bc(bc_len) for _ in range(n_barcodes)]
+                pos_data['bc'] = pos_data['bc_only'].copy()
 
     def add_fixed_sequence(self, seq, site, side):
         if side not in ['left', 'right']:
@@ -142,13 +155,14 @@ class Barcodes:
         cols = ['site', 'position', 'barcode', 'barcode_assembled']
         rows = []
         for site in self.sites.values():
-            for raw, assembled in zip(site.bc_only, site.bc):
-                rows.append({
-                    'site': site.id,
-                    'position': 'A',
-                    'barcode': raw,
-                    'barcode_assembled': assembled,
-                })
+            for pos_label, pos_data in site.positions.items():
+                for raw, assembled in zip(pos_data['bc_only'], pos_data['bc']):
+                    rows.append({
+                        'site': site.id,
+                        'position': pos_label,
+                        'barcode': raw,
+                        'barcode_assembled': assembled,
+                    })
         if not rows:
             return pd.DataFrame(columns=cols)
         return pd.DataFrame(rows).copy()
