@@ -51,7 +51,8 @@ class Barcodes:
         self._validate_enzymes(custom_enzymes)
         self._build_sites(n_sites)
         self.positions = 1
-        self.overhangs = ['TGCC', 'GCAA', 'AGGA'] # currently this only allows 4 internal positions
+        self.overhangs = ['TGCC', 'GCAA', 'AGGA', 'TGTG',
+                          'GAGC', 'ATTC', 'ATAG'] # allows <= 8 internal positions
         self.avoid_seqs = [] # rs and sequences to avoid (sequences, not RE names)
         self._bc_pool = bc_pool.copy()
 
