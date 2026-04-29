@@ -19,6 +19,9 @@ dependencies = [
 
 readme = "README.md"
 
+[project.optional-dependencies]
+test = ["pytest"]
+
 [project.urls]
 repository = "https://github.com/barcodeEZ/barcodeEZ"
 
