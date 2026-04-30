@@ -58,25 +58,65 @@ class TestSDF2:
     def test_positions(self, sdf2_ref):
         assert sdf2_ref['site_position'].unique().tolist() == ['A']
 
-    @pytest.mark.skip(reason="requires oligo_sequence generation implementation")
-    def test_forward_oligo_sequence(self, sdf2_ref):
-        pass
+    def test_forward_oligo_sequence(self, sdf2_ref, monkeypatch):
+        import random
+        fwd = sdf2_ref[sdf2_ref['opool_name'].str.endswith('_f')]
+        ordered = fwd.sort_values(['site_number', 'variable_sequence_number'])
+        pool = [bc.ljust(60, 'A') for bc in ordered['barcode_only']]
 
-    @pytest.mark.skip(reason="requires oligo_sequence generation implementation")
-    def test_reverse_oligo_sequence(self, sdf2_ref):
-        pass
+        b = Barcodes(n_sites=3)
+        b._bc_pool = pool
+        monkeypatch.setattr(random, 'randint', lambda a, b: 0)
+        b.generate_barcodes(25, 256)
+        for site_num in [1, 2, 3]:
+            site_rows = fwd[fwd['site_number'] == site_num].sort_values('variable_sequence_number')
+            b.add_fixed_sequence(site_rows['fixed_sequence_left'].iloc[0], site=site_num, side='left')
+        b.generate_oligos()
+
+        df = b.view()
+        for site_num in [1, 2, 3]:
+            site_rows = fwd[fwd['site_number'] == site_num].sort_values('variable_sequence_number')
+            generated = list(df[df['site'] == site_num]['forward_oligo'])
+            expected = list(site_rows['oligo_sequence'])
+            assert generated == expected, f"Forward oligo mismatch at site {site_num}"
+
+    def test_reverse_oligo_sequence(self, sdf2_ref, monkeypatch):
+        import random
+        fwd = sdf2_ref[sdf2_ref['opool_name'].str.endswith('_f')]
+        rev = sdf2_ref[sdf2_ref['opool_name'].str.endswith('_r')]
+        ordered = fwd.sort_values(['site_number', 'variable_sequence_number'])
+        pool = [bc.ljust(60, 'A') for bc in ordered['barcode_only']]
+
+        b = Barcodes(n_sites=3)
+        b._bc_pool = pool
+        monkeypatch.setattr(random, 'randint', lambda a, b: 0)
+        b.generate_barcodes(25, 256)
+        for site_num in [1, 2, 3]:
+            site_rows = fwd[fwd['site_number'] == site_num].sort_values('variable_sequence_number')
+            b.add_fixed_sequence(site_rows['fixed_sequence_left'].iloc[0], site=site_num, side='left')
+        b.generate_oligos()
+
+        df = b.view()
+        for site_num in [1, 2, 3]:
+            rev_rows = rev[rev['site_number'] == site_num].sort_values('variable_sequence_number')
+            generated = list(df[df['site'] == site_num]['reverse_oligo'])
+            expected = list(rev_rows['oligo_sequence'])
+            assert generated == expected, f"Reverse oligo mismatch at site {site_num}"
+
+
+SDF3_ENZYMES = ['EcoRI', 'BamHI', 'NheI', 'XhoI', 'AgeI']
 
 
 class TestSDF3:
 
     def test_site_count(self):
-        b = Barcodes(n_sites=4)
+        b = Barcodes(n_sites=4, custom_enzymes=SDF3_ENZYMES)
         assert len(b.sites) == 4
 
-    def test_default_enzyme_structure(self):
-        b = Barcodes(n_sites=4)
+    def test_enzyme_structure(self):
+        b = Barcodes(n_sites=4, custom_enzymes=SDF3_ENZYMES)
         assert b.sites[1].left_enzyme == 'EcoRI'
-        assert b.sites[4].right_enzyme == 'PlutI'
+        assert b.sites[4].right_enzyme == 'AgeI'
 
     def test_barcode_lengths(self, sdf3_ref):
         fwd = sdf3_ref[sdf3_ref['opool_name'].str.endswith('_f')]
@@ -97,7 +137,7 @@ class TestSDF3:
         # Pad each 30bp barcode to 60bp so it fits the pool format; _draw_bc slices to 30
         pool = [bc.ljust(60, 'A') for bc in ordered['barcode_only']]
 
-        b = Barcodes(n_sites=4)
+        b = Barcodes(n_sites=4, custom_enzymes=SDF3_ENZYMES)
         b.add_positions(n_per_site=4)
         b._bc_pool = pool
         monkeypatch.setattr(random, 'randint', lambda a, b: 0)
@@ -113,10 +153,47 @@ class TestSDF3:
                                     (df['position'] == pos)]['barcode'])
                 assert generated == ref, f"Mismatch at site {site_num} position {pos}"
 
-    @pytest.mark.skip(reason="requires oligo_sequence generation implementation")
-    def test_forward_oligo_sequence(self, sdf3_ref):
-        pass
+    def test_forward_oligo_sequence(self, sdf3_ref, monkeypatch):
+        import random
+        fwd = sdf3_ref[sdf3_ref['opool_name'].str.endswith('_f')]
+        ordered = fwd.sort_values(['site_number', 'site_position', 'variable_sequence_number'])
+        pool = [bc.ljust(60, 'A') for bc in ordered['barcode_only']]
 
-    @pytest.mark.skip(reason="requires oligo_sequence generation implementation")
-    def test_reverse_oligo_sequence(self, sdf3_ref):
-        pass
+        b = Barcodes(n_sites=4, custom_enzymes=SDF3_ENZYMES)
+        b.add_positions(n_per_site=4)
+        b._bc_pool = pool
+        monkeypatch.setattr(random, 'randint', lambda a, b: 0)
+        b.generate_barcodes(30, 3)
+        b.generate_oligos()
+
+        df = b.view()
+        for site_num in [1, 2, 3, 4]:
+            for pos in ['A', 'B', 'C', 'D']:
+                ref_rows = (fwd[(fwd['site_number'] == site_num) & (fwd['site_position'] == pos)]
+                            .sort_values('variable_sequence_number'))
+                generated = list(df[(df['site'] == site_num) & (df['position'] == pos)]['forward_oligo'])
+                expected = list(ref_rows['oligo_sequence'])
+                assert generated == expected, f"Forward oligo mismatch at site {site_num} pos {pos}"
+
+    def test_reverse_oligo_sequence(self, sdf3_ref, monkeypatch):
+        import random
+        fwd = sdf3_ref[sdf3_ref['opool_name'].str.endswith('_f')]
+        rev = sdf3_ref[sdf3_ref['opool_name'].str.endswith('_r')]
+        ordered = fwd.sort_values(['site_number', 'site_position', 'variable_sequence_number'])
+        pool = [bc.ljust(60, 'A') for bc in ordered['barcode_only']]
+
+        b = Barcodes(n_sites=4, custom_enzymes=SDF3_ENZYMES)
+        b.add_positions(n_per_site=4)
+        b._bc_pool = pool
+        monkeypatch.setattr(random, 'randint', lambda a, b: 0)
+        b.generate_barcodes(30, 3)
+        b.generate_oligos()
+
+        df = b.view()
+        for site_num in [1, 2, 3, 4]:
+            for pos in ['A', 'B', 'C', 'D']:
+                rev_rows = (rev[(rev['site_number'] == site_num) & (rev['site_position'] == pos)]
+                            .sort_values('variable_sequence_number'))
+                generated = list(df[(df['site'] == site_num) & (df['position'] == pos)]['reverse_oligo'])
+                expected = list(rev_rows['oligo_sequence'])
+                assert generated == expected, f"Reverse oligo mismatch at site {site_num} pos {pos}"

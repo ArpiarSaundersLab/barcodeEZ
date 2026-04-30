@@ -15,6 +15,19 @@ with gzip.open(str(files('barcodeEZ.bc_gen').joinpath('20k_barcodes_60mers.fa.gz
 _POSITION_LABELS = list('ABCDEFGH')
 
 
+def _rc(seq):
+    return seq.translate(str.maketrans('ACGT', 'TGCA'))[::-1]
+
+
+def _enzyme_parts(enzyme_name):
+    """Return (cut_right, cut_left) for a restriction enzyme.
+    cut_right = sequence to the right of the cut (insert side when enzyme is on the left).
+    cut_left  = base(s) to the left of the cut (vector side).
+    """
+    enz = getattr(RS, enzyme_name)
+    return enz.site[enz.fst5:], enz.site[:enz.fst5]
+
+
 class Site:
 
     def __init__(self, site_id, left_enzyme, right_enzyme):
@@ -54,7 +67,7 @@ class Barcodes:
         self.n_sites = n_sites
         self.sites = {}
         # default site enzymes (Assembly Plasmid):
-        self.site_enzymes = ['EcoRI', 'BamHI', 'NheI', 'XhoI', 'PlutI', 'AgeI', 'MluI']
+        self.site_enzymes = ['EcoRI', 'BamHI', 'NheI', 'XhoI', 'PluTI', 'AgeI', 'MluI']
         self._validate_enzymes(custom_enzymes)
         self._build_sites(n_sites)
         self.overhangs = ['TGCC', 'GCAA', 'AGGA', 'TGTG',
@@ -114,6 +127,7 @@ class Barcodes:
                     'left_oh': self.overhangs[i - 1] if i > 0 else None,
                     'right_oh': self.overhangs[i] if i < n_per_site - 1 else None,
                 }
+        return self
 
     def print_structure(self):
         print('----- ',end='')
@@ -143,6 +157,24 @@ class Barcodes:
             for pos_data in site.positions.values():
                 pos_data['bc_only'] = [self._draw_bc(bc_len) for _ in range(n_barcodes)]
                 pos_data['bc'] = pos_data['bc_only'].copy()
+        return self
+
+    def generate_oligos(self):
+        for site in self.sites.values():
+            for pos_data in site.positions.values():
+                if pos_data['left_oh'] is None:
+                    f_pre, r_suf = _enzyme_parts(site.left_enzyme)
+                else:
+                    f_pre, r_suf = pos_data['left_oh'], ''
+
+                if pos_data['right_oh'] is None:
+                    r_pre, f_suf = _enzyme_parts(site.right_enzyme)
+                else:
+                    f_suf, r_pre = '', _rc(pos_data['right_oh'])
+
+                pos_data['forward_oligos'] = [f_pre + bc + f_suf for bc in pos_data['bc']]
+                pos_data['reverse_oligos'] = [r_pre + _rc(bc) + r_suf for bc in pos_data['bc']]
+        return self
 
     def add_fixed_sequence(self, seq, site, side):
         if side not in ['left', 'right']:
@@ -150,19 +182,33 @@ class Barcodes:
         if site not in self.sites:
             raise ValueError(f'Site {site} does not exist.')
         self.sites[site].add_fixed_sequence(seq, side)
+        return self
 
     def view(self):
         cols = ['site', 'position', 'barcode', 'barcode_assembled']
+        has_oligos = any(
+            'forward_oligos' in pos_data
+            for site in self.sites.values()
+            for pos_data in site.positions.values()
+        )
+        if has_oligos:
+            cols += ['forward_oligo', 'reverse_oligo']
         rows = []
         for site in self.sites.values():
             for pos_label, pos_data in site.positions.items():
-                for raw, assembled in zip(pos_data['bc_only'], pos_data['bc']):
-                    rows.append({
+                fwd = pos_data.get('forward_oligos', [])
+                rev = pos_data.get('reverse_oligos', [])
+                for j, (raw, assembled) in enumerate(zip(pos_data['bc_only'], pos_data['bc'])):
+                    row = {
                         'site': site.id,
                         'position': pos_label,
                         'barcode': raw,
                         'barcode_assembled': assembled,
-                    })
+                    }
+                    if has_oligos:
+                        row['forward_oligo'] = fwd[j] if j < len(fwd) else None
+                        row['reverse_oligo'] = rev[j] if j < len(rev) else None
+                    rows.append(row)
         if not rows:
             return pd.DataFrame(columns=cols)
         return pd.DataFrame(rows).copy()
