@@ -40,7 +40,7 @@ class TestSDF2:
         df = b.view()
         for site_num in [1, 2, 3]:
             site_rows = fwd[fwd['site_number'] == site_num].sort_values('variable_sequence_number')
-            generated = list(df[df['site'] == site_num]['barcode_assembled'])
+            generated = list(df[df['site'] == site_num]['barcode_with_fixed_seq'])
             expected = list(site_rows['full_barcode_sequence'])
             assert generated == expected, f"Mismatch at site {site_num}"
 
@@ -71,7 +71,7 @@ class TestSDF2:
         for site_num in [1, 2, 3]:
             site_rows = fwd[fwd['site_number'] == site_num].sort_values('variable_sequence_number')
             b.add_fixed_sequence(site_rows['fixed_sequence_left'].iloc[0], site=site_num, side='left')
-        b.generate_oligos()
+
 
         df = b.view()
         for site_num in [1, 2, 3]:
@@ -94,7 +94,7 @@ class TestSDF2:
         for site_num in [1, 2, 3]:
             site_rows = fwd[fwd['site_number'] == site_num].sort_values('variable_sequence_number')
             b.add_fixed_sequence(site_rows['fixed_sequence_left'].iloc[0], site=site_num, side='left')
-        b.generate_oligos()
+
 
         df = b.view()
         for site_num in [1, 2, 3]:
@@ -164,7 +164,7 @@ class TestSDF3:
         b._bc_pool = pool
         monkeypatch.setattr(random, 'randint', lambda a, b: 0)
         b.generate_barcodes(30, 3)
-        b.generate_oligos()
+
 
         df = b.view()
         for site_num in [1, 2, 3, 4]:
@@ -187,7 +187,7 @@ class TestSDF3:
         b._bc_pool = pool
         monkeypatch.setattr(random, 'randint', lambda a, b: 0)
         b.generate_barcodes(30, 3)
-        b.generate_oligos()
+
 
         df = b.view()
         for site_num in [1, 2, 3, 4]:

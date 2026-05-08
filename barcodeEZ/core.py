@@ -157,9 +157,10 @@ class Barcodes:
             for pos_data in site.positions.values():
                 pos_data['bc_only'] = [self._draw_bc(bc_len) for _ in range(n_barcodes)]
                 pos_data['bc'] = pos_data['bc_only'].copy()
+        self._generate_oligos()
         return self
 
-    def generate_oligos(self):
+    def _generate_oligos(self):
         for site in self.sites.values():
             for pos_data in site.positions.values():
                 if pos_data['left_oh'] is None:
@@ -174,7 +175,6 @@ class Barcodes:
 
                 pos_data['forward_oligos'] = [f_pre + bc + f_suf for bc in pos_data['bc']]
                 pos_data['reverse_oligos'] = [r_pre + _rc(bc) + r_suf for bc in pos_data['bc']]
-        return self
 
     def add_fixed_sequence(self, seq, site, side):
         if side not in ['left', 'right']:
@@ -182,15 +182,22 @@ class Barcodes:
         if site not in self.sites:
             raise ValueError(f'Site {site} does not exist.')
         self.sites[site].add_fixed_sequence(seq, side)
+        self._generate_oligos()
         return self
 
     def view(self):
-        cols = ['site', 'position', 'barcode', 'barcode_assembled']
+        has_fixed = any(
+            site.fixed_left or site.fixed_right
+            for site in self.sites.values()
+        )
         has_oligos = any(
             'forward_oligos' in pos_data
             for site in self.sites.values()
             for pos_data in site.positions.values()
         )
+        cols = ['site', 'position', 'barcode']
+        if has_fixed:
+            cols += ['barcode_with_fixed_seq']
         if has_oligos:
             cols += ['forward_oligo', 'reverse_oligo']
         rows = []
@@ -203,8 +210,9 @@ class Barcodes:
                         'site': site.id,
                         'position': pos_label,
                         'barcode': raw,
-                        'barcode_assembled': assembled,
                     }
+                    if has_fixed:
+                        row['barcode_with_fixed_seq'] = assembled
                     if has_oligos:
                         row['forward_oligo'] = fwd[j] if j < len(fwd) else None
                         row['reverse_oligo'] = rev[j] if j < len(rev) else None

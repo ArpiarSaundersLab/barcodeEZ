@@ -226,7 +226,7 @@ class TestView:
         b = Barcodes(n_sites=2)
         b.generate_barcodes(30, 5)
         df = b.view()
-        assert list(df.columns) == ['site', 'position', 'barcode', 'barcode_assembled']
+        assert list(df.columns) == ['site', 'position', 'barcode', 'forward_oligo', 'reverse_oligo']
 
     def test_row_count_single_position(self):
         b = Barcodes(n_sites=2)
@@ -266,12 +266,12 @@ class TestView:
         df = b.view()
         assert list(df['barcode']) == b.sites[1].positions['A']['bc_only']
 
-    def test_barcode_assembled_reflects_fixed_seq(self):
+    def test_barcode_with_fixed_seq_reflects_fixed_seq(self):
         b = Barcodes(n_sites=1)
         b.generate_barcodes(25, 5)
         b.add_fixed_sequence('GGGG', site=1, side='left')
         df = b.view()
-        assert df['barcode_assembled'].str.startswith('GGGG').all()
+        assert df['barcode_with_fixed_seq'].str.startswith('GGGG').all()
         assert not df['barcode'].str.startswith('GGGG').any()
 
     def test_returns_copy(self):
@@ -284,7 +284,7 @@ class TestView:
     def test_empty_before_generate(self):
         b = Barcodes(n_sites=2)
         df = b.view()
-        assert list(df.columns) == ['site', 'position', 'barcode', 'barcode_assembled']
+        assert list(df.columns) == ['site', 'position', 'barcode']
         assert len(df) == 0
 
 
