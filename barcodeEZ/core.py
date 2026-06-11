@@ -5,7 +5,7 @@ import gzip
 from importlib.resources import files
 import pandas as pd
 
-with gzip.open(str(files('barcodeEZ.bc_gen').joinpath('20k_barcodes_60mers.fa.gz')), 'rt') as f:
+with gzip.open(str(files('barcodeEZ').joinpath('corpus/20k_barcodes_60mers.fa.gz')), 'rt') as f:
     bc_pool = []
     for i,line in enumerate(f):
         line = line.strip()
