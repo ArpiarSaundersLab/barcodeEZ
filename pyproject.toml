@@ -9,7 +9,7 @@ version = "0.1"
 authors = [
     {name="Zach Goode", email="goodez@ohsu.edu"}
 ]
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 dependencies = [
     "biopython >= 1.81",
     "pandas",
@@ -19,6 +19,7 @@ readme = "README.md"
 
 [project.optional-dependencies]
 test = ["pytest"]
+docs = ["mkdocs", "mkdocs-material", "mkdocstrings[python]"]
 
 [project.urls]
 repository = "https://github.com/barcodeEZ/barcodeEZ"
