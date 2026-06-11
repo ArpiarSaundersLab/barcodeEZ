@@ -1,14 +1,110 @@
+import math
 import Bio.Restriction as RS
 import random
 import gzip
 from importlib.resources import files
+import pandas as pd
 
-with gzip.open(str(files('barcodeEZ.bc_gen').joinpath('20k_barcodes_60mers.fa.gz')), 'rt') as f:
+with gzip.open(str(files('barcodeEZ').joinpath('corpus/20k_barcodes_60mers.fa.gz')), 'rt') as f:
     bc_pool = []
     for i,line in enumerate(f):
         line = line.strip()
         if i % 2 == 1:
             bc_pool.append(line)
+
+_POSITION_LABELS = list('ABCDEFGH')
+
+_DEFAULT_AVOID_ENZYMES = [
+    'BsiWI', 'MreI', 'FseI', 'EcoRI', 'AvrII', 'BamHI', 'KpnI', 'NheI',
+    'PciI', 'XhoI', 'SpeI', 'PluTI', 'NotI', 'AgeI', 'AsiSI', 'MluI',
+    'SbfI', 'MauBI',
+]
+
+
+_FASTA_EXTENSIONS = {'.fa', '.fasta', '.fna', '.fa.gz', '.fasta.gz', '.fna.gz'}
+
+
+def _expand_motif_list(avoid):
+    """Expand any FASTA file paths in avoid into their constituent sequences."""
+    expanded = []
+    for item in avoid:
+        lower = item.lower()
+        is_fasta = any(lower.endswith(ext) for ext in _FASTA_EXTENSIONS)
+        if is_fasta:
+            from pathlib import Path
+            p = Path(item)
+            if not p.exists():
+                print(f"Error: FASTA file not found: {item}")
+                continue
+            opener = gzip.open if lower.endswith('.gz') else open
+            with opener(item, 'rt') as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith('>'):
+                        expanded.append(line)
+        else:
+            expanded.append(item)
+    return expanded
+
+
+def _resolve_motifs(names_or_seqs):
+    """Return {recognition_sequence: label} for a list of enzyme names or raw sequences."""
+    result = {}
+    for item in names_or_seqs:
+        if item in RS.AllEnzymes:
+            result[getattr(RS, item).site] = item
+        elif all(c in 'ACGT' for c in item.upper()):
+            result[item.upper()] = item
+        else:
+            raise ValueError(f"'{item}' is not a recognized enzyme name or valid DNA sequence.")
+    return result
+
+
+def _rc(seq):
+    return seq.translate(str.maketrans('ACGT', 'TGCA'))[::-1]
+
+
+def _enzyme_parts(enzyme_name):
+    """Return (cut_right, cut_left) for a restriction enzyme.
+    cut_right = sequence to the right of the cut (insert side when enzyme is on the left).
+    cut_left  = base(s) to the left of the cut (vector side).
+    """
+    enz = getattr(RS, enzyme_name)
+    return enz.site[enz.fst5:], enz.site[:enz.fst5]
+
+
+class Site:
+
+    def __init__(self, site_id, left_enzyme, right_enzyme):
+        self.id = site_id
+        self.left_enzyme = left_enzyme
+        self.right_enzyme = right_enzyme
+        self.fixed_left = ''
+        self.fixed_right = ''
+        # positions dict: label -> {'bc_only': [], 'bc': [], 'left_oh': str|None, 'right_oh': str|None}
+        # left_oh/right_oh are None at enzyme boundaries, 4bp strings for internal overhangs
+        self.positions = {'A': {'bc_only': [], 'bc': [], 'left_oh': None, 'right_oh': None}}
+
+    def __repr__(self):
+        n_pos = len(self.positions)
+        n_bc = sum(len(p['bc']) for p in self.positions.values())
+        bc_len = next((len(p['bc'][0]) for p in self.positions.values() if p['bc']), 0)
+        return (f"Site {self.id}: {self.left_enzyme} -- SITE{self.id} -- {self.right_enzyme} "
+                f"| {n_pos} position(s), {n_bc} barcodes, {bc_len}bp")
+
+    def add_fixed_sequence(self, seq, side):
+        if side == 'left':
+            self.fixed_left = seq
+        else:
+            self.fixed_right = seq
+        self._rebuild_bc()
+
+    def _rebuild_bc(self):
+        for pos_data in self.positions.values():
+            pos_data['bc'] = [
+                self.fixed_left + bc + self.fixed_right for bc in pos_data['bc_only']
+            ]
+
 
 class Barcodes:
     
@@ -16,13 +112,15 @@ class Barcodes:
         self.n_sites = n_sites
         self.sites = {}
         # default site enzymes (Assembly Plasmid):
-        self.site_enzymes = ['EcoRI', 'BamHI', 'NheI', 'XhoI', 'PlutI', 'AgeI', 'MluI']
+        self.site_enzymes = ['EcoRI', 'BamHI', 'NheI', 'XhoI', 'PluTI', 'AgeI', 'MluI']
         self._validate_enzymes(custom_enzymes)
         self._build_sites(n_sites)
-        self.positions = 1
-        self.overhangs = ['TGCC', 'GCAA', 'AGGA'] # add 6 total for each site
-        self.avoid_seqs = [] # rs and sequences to avoid
-        self._bc_pool = bc_pool.copy()    
+        self.overhangs = ['TGCC', 'GCAA', 'AGGA', 'TGTG',
+                          'GAGC', 'ATTC', 'ATAG'] # 7 overhangs support up to 8 positions
+        self.avoid_seqs = [] # rs and sequences to avoid (sequences, not RE names)
+        self._validated = False
+        self._bc_pool = bc_pool.copy()
+
     def _validate_enzymes(self, enzymes):
         self._custom_enz = False
         if enzymes is not None and not isinstance(enzymes, list): 
@@ -57,16 +155,25 @@ class Barcodes:
             self.site_enzymes = self.site_enzymes[0:(n+1)]
         
         for i in range(self.n_sites):
-            site_id = i+1
-            self.sites[site_id] = {'left': self.site_enzymes[i],
-                                   'right': self.site_enzymes[i+1],
-                                   'bc': None}
+            site_id = i + 1
+            self.sites[site_id] = Site(site_id, self.site_enzymes[i], self.site_enzymes[i+1])
     
     def add_positions(self, *, n_per_site):
-        print(f"Method to add {n_per_site} positions within sites")
-        # method to add n_per_site number of positions within each site
-        # use default sticky overhangs for middle positions
-        # allow users to customize this eventually
+        if not isinstance(n_per_site, int) or n_per_site < 1:
+            raise TypeError('n_per_site must be a positive integer.')
+        if n_per_site > 8:
+            raise ValueError('n_per_site must be <= 8.')
+        labels = _POSITION_LABELS[:n_per_site]
+        for site in self.sites.values():
+            site.positions = {}
+            for i, label in enumerate(labels):
+                site.positions[label] = {
+                    'bc_only': [],
+                    'bc': [],
+                    'left_oh': self.overhangs[i - 1] if i > 0 else None,
+                    'right_oh': self.overhangs[i] if i < n_per_site - 1 else None,
+                }
+        return self
 
     def print_structure(self):
         print('----- ',end='')
@@ -74,45 +181,146 @@ class Barcodes:
             current_site = self.sites[i+1]
             if (i+1) == 1:
                 print(
-                    f'{current_site["left"]} - \033[31mSITE{i+1}\033[0m - '
-                    f'{current_site["right"]} - ', end='')
+                    f'{current_site.left_enzyme} - \033[31mSITE{i+1}\033[0m - '
+                    f'{current_site.right_enzyme} - ', end='')
             elif i == max(range(self.n_sites)):
-                print(f'\033[31mSITE{i+1}\033[0m - {current_site["right"]} -----')
+                print(f'\033[31mSITE{i+1}\033[0m - {current_site.right_enzyme} -----')
             else:
-                print(f'\033[31mSITE{i+1}\033[0m - {current_site["right"]} - ',
+                print(f'\033[31mSITE{i+1}\033[0m - {current_site.right_enzyme} - ',
                       end='')
     
+    def _draw_bc(self, bc_len):
+        n_segs = math.ceil(bc_len / 60)
+        segments = []
+        for _ in range(n_segs):
+            index = random.randint(0, len(self._bc_pool)-1)
+            segments.append(self._bc_pool.pop(index))
+        return ''.join(segments)[:bc_len]
+
     def generate_barcodes(self, bc_len, n_barcodes):
         print('Generating barcodes...')
-        # generate barcodes for each site
-        if bc_len > 60:
-            # implement concatenation of bc_pool sequences for longer barcodes
-            raise ValueError('Barcode length must be 60 or less.') # avoid for now
-        for i in range(self.n_sites):
-            site_id = i + 1
-            self.sites[site_id]['bc_only'] = []
-            for j in range(n_barcodes):
-                index = random.randint(0, len(self._bc_pool)-1)
-                bc_insert = self._bc_pool.pop(index)[0:bc_len] # remove from pool once used
-                self.sites[site_id]['bc_only'].append(bc_insert)
-            self.sites[site_id]['bc'] = self.sites[site_id]['bc_only'].copy()
+        self._bc_len = bc_len
+        self._validated = False
+        for site in self.sites.values():
+            for pos_data in site.positions.values():
+                pos_data['bc_only'] = [self._draw_bc(bc_len) for _ in range(n_barcodes)]
+                pos_data['bc'] = pos_data['bc_only'].copy()
+        self._generate_oligos()
+        return self
+
+    def _generate_oligos(self):
+        for site in self.sites.values():
+            for pos_data in site.positions.values():
+                if pos_data['left_oh'] is None:
+                    f_pre, r_suf = _enzyme_parts(site.left_enzyme)
+                else:
+                    f_pre, r_suf = pos_data['left_oh'], ''
+
+                if pos_data['right_oh'] is None:
+                    r_pre, f_suf = _enzyme_parts(site.right_enzyme)
+                else:
+                    f_suf, r_pre = '', _rc(pos_data['right_oh'])
+
+                pos_data['forward_oligos'] = [f_pre + bc + f_suf for bc in pos_data['bc']]
+                pos_data['reverse_oligos'] = [r_pre + _rc(bc) + r_suf for bc in pos_data['bc']]
 
     def add_fixed_sequence(self, seq, site, side):
         if side not in ['left', 'right']:
             raise ValueError('Side must be either "left" or "right".')
         if site not in self.sites:
             raise ValueError(f'Site {site} does not exist.')
-        self.sites[site].setdefault('fixed_left', '')
-        self.sites[site].setdefault('fixed_right', '')
-        if side == 'left':
-            self.sites[site]['fixed_left'] = seq
-        else:
-            self.sites[site]['fixed_right'] = seq
-        self._rebuild_bc(site)
+        self.sites[site].add_fixed_sequence(seq, side)
+        self._validated = False
+        self._generate_oligos()
+        return self
 
-    def _rebuild_bc(self, site):
-        left = self.sites[site].get('fixed_left', '')
-        right = self.sites[site].get('fixed_right', '')
-        self.sites[site]['bc'] = [
-            left + bc + right for bc in self.sites[site]['bc_only']
-        ]
+    def validate(self, ignore_defaults=False, motifs=None):
+        expanded = _expand_motif_list(motifs or [])
+        names = ([] if ignore_defaults else _DEFAULT_AVOID_ENZYMES) + expanded
+        self.avoid_seqs = _resolve_motifs(names)
+        n_replaced = self._validate_and_replace()
+        self._generate_oligos()
+        if n_replaced:
+            print(f'Validation complete: {n_replaced} barcode(s) replaced.')
+        else:
+            print('Validation complete: no unwanted motifs found.')
+        self._validated = True
+        return self
+
+    def _validate_and_replace(self):
+        n_replaced = 0
+        for site in self.sites.values():
+            fixed_left = site.fixed_left
+            fixed_right = site.fixed_right
+            for pos_data in site.positions.values():
+                for i, bc in enumerate(pos_data['bc']):
+                    current_bc = bc
+                    hits = [label for motif, label in self.avoid_seqs.items()
+                            if motif in current_bc]
+                    while hits:
+                        print(f"Contamination ({', '.join(hits)}): {current_bc!r} — replacing barcode.")
+                        if not self._bc_pool:
+                            raise RuntimeError(
+                                'bc_pool exhausted; could not find clean replacement barcode. '
+                                'The unwanted motif may be coming from a fixed sequence or overhang.'
+                            )
+                        new_bc_only = self._draw_bc(self._bc_len)
+                        new_bc = fixed_left + new_bc_only + fixed_right
+                        hits = [label for motif, label in self.avoid_seqs.items()
+                                if motif in new_bc]
+                        current_bc = new_bc
+                        if not hits:
+                            pos_data['bc_only'][i] = new_bc_only
+                            pos_data['bc'][i] = new_bc
+                            n_replaced += 1
+        return n_replaced
+
+    def view(self):
+        has_fixed = any(
+            site.fixed_left or site.fixed_right
+            for site in self.sites.values()
+        )
+        has_oligos = any(
+            'forward_oligos' in pos_data
+            for site in self.sites.values()
+            for pos_data in site.positions.values()
+        )
+        cols = ['site', 'position', 'barcode']
+        if has_fixed:
+            cols += ['barcode_with_fixed_seq']
+        if has_oligos:
+            cols += ['forward_oligo', 'reverse_oligo']
+        rows = []
+        for site in self.sites.values():
+            for pos_label, pos_data in site.positions.items():
+                fwd = pos_data.get('forward_oligos', [])
+                rev = pos_data.get('reverse_oligos', [])
+                for j, (raw, assembled) in enumerate(zip(pos_data['bc_only'], pos_data['bc'])):
+                    row = {
+                        'site': site.id,
+                        'position': pos_label,
+                        'barcode': raw,
+                    }
+                    if has_fixed:
+                        row['barcode_with_fixed_seq'] = assembled
+                    if has_oligos:
+                        row['forward_oligo'] = fwd[j] if j < len(fwd) else None
+                        row['reverse_oligo'] = rev[j] if j < len(rev) else None
+                    rows.append(row)
+        if not rows:
+            return pd.DataFrame(columns=cols)
+        return pd.DataFrame(rows).copy()
+
+    def write_order_form(self, file):
+        df = self.view()
+        if 'forward_oligo' not in df.columns:
+            raise RuntimeError('No oligo sequences found. Run generate_barcodes() first.')
+        if not self._validated:
+            print('Warning: validate() has not been run. Unwanted restriction sites or motifs '
+                  'may be present in the library.')
+        order_rows = []
+        for _, row in df.iterrows():
+            name = f"site{row['site']}"
+            order_rows.append({'opool_name': f'{name}_f', 'oligo_sequence': row['forward_oligo']})
+            order_rows.append({'opool_name': f'{name}_r', 'oligo_sequence': row['reverse_oligo']})
+        pd.DataFrame(order_rows).to_csv(file, index=False)
