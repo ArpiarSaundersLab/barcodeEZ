@@ -14,6 +14,25 @@ with gzip.open(str(files('barcodeEZ.bc_gen').joinpath('20k_barcodes_60mers.fa.gz
 
 _POSITION_LABELS = list('ABCDEFGH')
 
+_DEFAULT_AVOID_ENZYMES = [
+    'BsiWI', 'MreI', 'FseI', 'EcoRI', 'AvrII', 'BamHI', 'KpnI', 'NheI',
+    'PciI', 'XhoI', 'SpeI', 'PluTI', 'NotI', 'AgeI', 'AsiSI', 'MluI',
+    'SbfI', 'MauBI',
+]
+
+
+def _resolve_motifs(names_or_seqs):
+    """Return {recognition_sequence: label} for a list of enzyme names or raw sequences."""
+    result = {}
+    for item in names_or_seqs:
+        if item in RS.AllEnzymes:
+            result[getattr(RS, item).site] = item
+        elif all(c in 'ACGT' for c in item.upper()):
+            result[item.upper()] = item
+        else:
+            raise ValueError(f"'{item}' is not a recognized enzyme name or valid DNA sequence.")
+    return result
+
 
 def _rc(seq):
     return seq.translate(str.maketrans('ACGT', 'TGCA'))[::-1]
@@ -153,6 +172,7 @@ class Barcodes:
 
     def generate_barcodes(self, bc_len, n_barcodes):
         print('Generating barcodes...')
+        self._bc_len = bc_len
         for site in self.sites.values():
             for pos_data in site.positions.values():
                 pos_data['bc_only'] = [self._draw_bc(bc_len) for _ in range(n_barcodes)]
@@ -184,6 +204,38 @@ class Barcodes:
         self.sites[site].add_fixed_sequence(seq, side)
         self._generate_oligos()
         return self
+
+    def validate(self, ignore_defaults=False, avoid=None):
+        names = ([] if ignore_defaults else _DEFAULT_AVOID_ENZYMES) + (avoid or [])
+        self.avoid_seqs = _resolve_motifs(names)
+        self._validate_and_replace()
+        self._generate_oligos()
+        return self
+
+    def _validate_and_replace(self):
+        for site in self.sites.values():
+            fixed_left = site.fixed_left
+            fixed_right = site.fixed_right
+            for pos_data in site.positions.values():
+                for i, bc in enumerate(pos_data['bc']):
+                    current_bc = bc
+                    hits = [label for motif, label in self.avoid_seqs.items()
+                            if motif in current_bc]
+                    while hits:
+                        print(f"Contamination ({', '.join(hits)}): {current_bc!r} — replacing barcode.")
+                        if not self._bc_pool:
+                            raise RuntimeError(
+                                'bc_pool exhausted; could not find clean replacement barcode. '
+                                'The unwanted motif may be coming from a fixed sequence or overhang.'
+                            )
+                        new_bc_only = self._draw_bc(self._bc_len)
+                        new_bc = fixed_left + new_bc_only + fixed_right
+                        hits = [label for motif, label in self.avoid_seqs.items()
+                                if motif in new_bc]
+                        current_bc = new_bc
+                        if not hits:
+                            pos_data['bc_only'][i] = new_bc_only
+                            pos_data['bc'][i] = new_bc
 
     def view(self):
         has_fixed = any(

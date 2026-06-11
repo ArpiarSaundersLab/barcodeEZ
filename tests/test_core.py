@@ -311,3 +311,63 @@ class TestSiteRepr:
         r = repr(b.sites[1])
         assert '4 position(s)' in r
         assert '12 barcodes' in r
+
+
+class TestValidation:
+
+    def test_default_avoid_seqs_populated(self):
+        b = Barcodes(n_sites=1)
+        b.generate_barcodes(30, 3)
+        b.validate()
+        assert len(b.avoid_seqs) > 0
+
+    def test_ignore_defaults_clears_avoid(self):
+        b = Barcodes(n_sites=1)
+        b.generate_barcodes(30, 3)
+        b.validate(ignore_defaults=True)
+        assert b.avoid_seqs == {}
+
+    def test_contaminated_barcode_replaced(self, capsys):
+        # Force contaminated barcode into pool for generation, then supply clean replacement
+        contaminated = 'AAAGAATTCAAAAAAAAAAAAAAAAAAAAA'  # EcoRI site (GAATTC)
+        clean = 'TTTTTTTTTTTTTTTTTTTTTTTTTTTTTT'
+        b = Barcodes(n_sites=1)
+        b._bc_pool = [contaminated.ljust(60, 'A')]  # only option → always drawn
+        b.generate_barcodes(30, 1)
+        b._bc_pool = [clean.ljust(60, 'A')]         # clean replacement available
+        b.validate(ignore_defaults=False)
+        assert b.sites[1].positions['A']['bc_only'][0] == clean
+        assert 'EcoRI' in capsys.readouterr().out
+
+    def test_avoid_enzyme_name(self, capsys):
+        contaminated = 'AAAGGATCCAAAAAAAAAAAAAAAAAAAAA'  # BamHI site (GGATCC)
+        clean = 'CCCCCCCCCCCCCCCCCCCCCCCCCCCCCC'
+        b = Barcodes(n_sites=1)
+        b._bc_pool = [contaminated.ljust(60, 'A')]
+        b.generate_barcodes(30, 1)
+        b._bc_pool = [clean.ljust(60, 'A')]
+        b.validate(ignore_defaults=True, avoid=['BamHI'])
+        assert b.sites[1].positions['A']['bc_only'][0] == clean
+        assert 'BamHI' in capsys.readouterr().out
+
+    def test_contamination_from_fixed_seq(self, capsys):
+        # fixed_left='AAAGAA' + bc_only starting with 'TTC...' → 'GAATTC' (EcoRI) at junction
+        bc_only = 'TTCAAAAAAAAAAAAAAAAAAAAAAAAAAA'
+        clean   = 'GGGGGGGGGGGGGGGGGGGGGGGGGGGGGG'
+        b = Barcodes(n_sites=1)
+        b._bc_pool = [bc_only.ljust(60, 'A')]
+        b.generate_barcodes(30, 1)
+        b.add_fixed_sequence('AAAGAA', site=1, side='left')
+        b._bc_pool = [clean.ljust(60, 'A')]
+        b.validate(ignore_defaults=False)
+        assert b.sites[1].positions['A']['bc_only'][0] == clean
+        assert 'EcoRI' in capsys.readouterr().out
+
+    def test_pool_exhausted_raises(self):
+        contaminated = 'AAAGAATTCAAAAAAAAAAAAAAAAAAAAA'
+        b = Barcodes(n_sites=1)
+        b._bc_pool = [contaminated.ljust(60, 'A')]
+        b.generate_barcodes(30, 1)
+        # pool is now empty — replacement impossible
+        with pytest.raises(RuntimeError):
+            b.validate(ignore_defaults=False)
