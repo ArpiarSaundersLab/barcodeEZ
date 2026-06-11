@@ -21,6 +21,32 @@ _DEFAULT_AVOID_ENZYMES = [
 ]
 
 
+_FASTA_EXTENSIONS = {'.fa', '.fasta', '.fna', '.fa.gz', '.fasta.gz', '.fna.gz'}
+
+
+def _expand_motif_list(avoid):
+    """Expand any FASTA file paths in avoid into their constituent sequences."""
+    expanded = []
+    for item in avoid:
+        lower = item.lower()
+        is_fasta = any(lower.endswith(ext) for ext in _FASTA_EXTENSIONS)
+        if is_fasta:
+            from pathlib import Path
+            p = Path(item)
+            if not p.exists():
+                print(f"Error: FASTA file not found: {item}")
+                continue
+            opener = gzip.open if lower.endswith('.gz') else open
+            with opener(item, 'rt') as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith('>'):
+                        expanded.append(line)
+        else:
+            expanded.append(item)
+    return expanded
+
+
 def _resolve_motifs(names_or_seqs):
     """Return {recognition_sequence: label} for a list of enzyme names or raw sequences."""
     result = {}
@@ -92,6 +118,7 @@ class Barcodes:
         self.overhangs = ['TGCC', 'GCAA', 'AGGA', 'TGTG',
                           'GAGC', 'ATTC', 'ATAG'] # 7 overhangs support up to 8 positions
         self.avoid_seqs = [] # rs and sequences to avoid (sequences, not RE names)
+        self._validated = False
         self._bc_pool = bc_pool.copy()
 
     def _validate_enzymes(self, enzymes):
@@ -173,6 +200,7 @@ class Barcodes:
     def generate_barcodes(self, bc_len, n_barcodes):
         print('Generating barcodes...')
         self._bc_len = bc_len
+        self._validated = False
         for site in self.sites.values():
             for pos_data in site.positions.values():
                 pos_data['bc_only'] = [self._draw_bc(bc_len) for _ in range(n_barcodes)]
@@ -202,17 +230,25 @@ class Barcodes:
         if site not in self.sites:
             raise ValueError(f'Site {site} does not exist.')
         self.sites[site].add_fixed_sequence(seq, side)
+        self._validated = False
         self._generate_oligos()
         return self
 
-    def validate(self, ignore_defaults=False, avoid=None):
-        names = ([] if ignore_defaults else _DEFAULT_AVOID_ENZYMES) + (avoid or [])
+    def validate(self, ignore_defaults=False, motifs=None):
+        expanded = _expand_motif_list(motifs or [])
+        names = ([] if ignore_defaults else _DEFAULT_AVOID_ENZYMES) + expanded
         self.avoid_seqs = _resolve_motifs(names)
-        self._validate_and_replace()
+        n_replaced = self._validate_and_replace()
         self._generate_oligos()
+        if n_replaced:
+            print(f'Validation complete: {n_replaced} barcode(s) replaced.')
+        else:
+            print('Validation complete: no unwanted motifs found.')
+        self._validated = True
         return self
 
     def _validate_and_replace(self):
+        n_replaced = 0
         for site in self.sites.values():
             fixed_left = site.fixed_left
             fixed_right = site.fixed_right
@@ -236,6 +272,8 @@ class Barcodes:
                         if not hits:
                             pos_data['bc_only'][i] = new_bc_only
                             pos_data['bc'][i] = new_bc
+                            n_replaced += 1
+        return n_replaced
 
     def view(self):
         has_fixed = any(
@@ -272,3 +310,17 @@ class Barcodes:
         if not rows:
             return pd.DataFrame(columns=cols)
         return pd.DataFrame(rows).copy()
+
+    def write_order_form(self, file):
+        df = self.view()
+        if 'forward_oligo' not in df.columns:
+            raise RuntimeError('No oligo sequences found. Run generate_barcodes() first.')
+        if not self._validated:
+            print('Warning: validate() has not been run. Unwanted restriction sites or motifs '
+                  'may be present in the library.')
+        order_rows = []
+        for _, row in df.iterrows():
+            name = f"site{row['site']}"
+            order_rows.append({'opool_name': f'{name}_f', 'oligo_sequence': row['forward_oligo']})
+            order_rows.append({'opool_name': f'{name}_r', 'oligo_sequence': row['reverse_oligo']})
+        pd.DataFrame(order_rows).to_csv(file, index=False)

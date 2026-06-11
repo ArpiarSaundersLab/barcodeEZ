@@ -346,7 +346,7 @@ class TestValidation:
         b._bc_pool = [contaminated.ljust(60, 'A')]
         b.generate_barcodes(30, 1)
         b._bc_pool = [clean.ljust(60, 'A')]
-        b.validate(ignore_defaults=True, avoid=['BamHI'])
+        b.validate(ignore_defaults=True, motifs=['BamHI'])
         assert b.sites[1].positions['A']['bc_only'][0] == clean
         assert 'BamHI' in capsys.readouterr().out
 
