@@ -8,3 +8,4 @@ site/
 */bc_gen
 .claude/
 .pytest_cache
+CLAUDE.md

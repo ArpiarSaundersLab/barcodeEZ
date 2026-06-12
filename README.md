@@ -1,62 +1,46 @@
 # barcodeEZ
 
+<img src="docs/assets/barcodeEZ.png" alt="barcodeEZ" width="400"/>
+
 **barcodeEZ** is a Python package for designing complex, combinatorial DNA barcode libraries for molecular cloning.
 
-You create a site-aware `Barcodes` object, describe the structure of your library (sites, positions, restriction-enzyme boundaries, fixed sequences), and barcodeEZ draws orthogonal barcode sequence from a prebuilt corpus, assembles forward and reverse oligos, screens them for unwanted sequence content, and exports a ready-to-order oligo pool.
+The package allows design and creation of a site-aware `Barcodes` object. It is built around sites, expandable positions, restriction-enzyme boundaries, optimized overhangs, and optional fixed sequences. barcodeEZ draws orthogonal barcode sequence from a prebuilt corpus, assembles forward and reverse oligos, screens them for unwanted sequence content, and exports a ready-to-order oligo pool.
 
-## Features
+## What it does
 
-- Design a library from restriction-enzyme boundaries — built-in default panel or your own enzymes
-- Add up to 8 combinatorial positions per site, with automatically assigned internal overhangs
-- Generate barcodes of any length from a corpus of ~20,000 orthogonal 60-mers bundled with the package
-- Attach fixed sequences (adapters, spacers, anchors) to either side of a site
-- Validate against restriction sites and arbitrary motifs, automatically replacing contaminated barcodes
-- Inspect the full design as a pandas DataFrame
-- Export a single-stranded oligo order form as CSV
+- **Design** a library structure from restriction-enzyme boundaries — use the built-in default panel or supply your own enzymes.
+- **Add positions** within each site for combinatorial, multi-position barcoding (up to 8 positions per site), with automatically assigned optimized internal overhangs.
+- **Generate barcodes** of any length from a corpus of ~20,000 orthogonal 60-mers shipped with the package.
+- **Attach fixed sequences** to either end of a site.
+- **Validate** against restriction sites and undesired motifs, automatically swapping out any contaminated barcode.
+- **Inspect** the whole design as a pandas DataFrame.
+- **Export** a single-stranded oligo order form as CSV.
 
 ## Installation
-
-barcodeEZ requires **Python ≥ 3.9**.
 
 ```bash
 pip install barcodeEZ
 ```
 
-Or install the latest development version from GitHub:
-
-```bash
-pip install git+https://github.com/goodez/barcodeEZ.git
-```
-
 The barcode corpus ships with the package; `biopython` and `pandas` are installed automatically.
 
-## Quickstart
+## A minimal example
 
 ```python
 from barcodeEZ import Barcodes
 
-b = Barcodes(n_sites=2)              # two barcoded sites, default enzymes
+b = Barcodes(n_sites=2)             # two barcoded sites, default enzymes
 b.generate_barcodes(bc_len=20, n_barcodes=96)
 b.validate()                        # screen + replace contaminated barcodes
 b.write_order_form('library.csv')   # export the oligo pool
 ```
 
-For a combinatorial library with positions and adapters:
+## API
 
-```python
-b = Barcodes(n_sites=1)
-b.add_positions(n_per_site=3)              # positions A, B, C per site
-b.generate_barcodes(bc_len=18, n_barcodes=96)
-b.add_fixed_sequence('AAGCTT', site=1, side='left')
-b.validate()
-print(b.view())
-```
-
-## API overview
+All functionality is accessed through the `Barcodes(n_sites, custom_enzymes=None)` object. Methods return `self` and can be chained.
 
 | Method | Purpose |
 |--------|---------|
-| `Barcodes(n_sites, custom_enzymes=None)` | Create a library structure |
 | `add_positions(*, n_per_site)` | Add combinatorial positions per site (call before generating) |
 | `generate_barcodes(bc_len, n_barcodes)` | Draw barcodes and assemble oligos |
 | `add_fixed_sequence(seq, site, side)` | Attach a fixed flanking sequence to a site |
@@ -69,5 +53,5 @@ See the [full documentation](https://goodez.github.io/barcodeEZ/) for parameter 
 
 ## Requirements
 
-- Python ≥ 3.9
+- Python ≥ 3.10
 - biopython ≥ 1.81, pandas (installed automatically with pip)
