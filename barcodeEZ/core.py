@@ -107,8 +107,53 @@ class Site:
 
 
 class Barcodes:
-    
-    def __init__(self, n_sites=None, custom_enzymes=None):
+    """Design a combinatorial barcode library for molecular assembly.
+
+    The only object users need. Methods that configure the library return
+    ``self``, so steps can be chained or called sequentially on the same
+    variable -- both styles are equivalent.
+
+    Parameters
+    ----------
+    n_sites : int
+        Number of barcoded sites. With the default enzyme panel, must be <= 6.
+    custom_enzymes : list of str, optional
+        Restriction-enzyme panel defining site boundaries. Must contain exactly
+        ``n_sites + 1`` enzyme names (case-sensitive, Biopython-recognized).
+        Overrides the default panel (EcoRI, BamHI, NheI, XhoI, PluTI, AgeI, MluI).
+
+    Raises
+    ------
+    TypeError
+        If ``n_sites`` is not an integer.
+    ValueError
+        If ``n_sites > 6`` with default enzymes, the custom panel length is not
+        ``n_sites + 1``, or an enzyme name is not recognized by Biopython.
+
+    Examples
+    --------
+    Chained:
+
+    >>> b = (Barcodes(n_sites=2)
+    ...         .add_positions(n_per_site=4)
+    ...         .generate_barcodes(bc_len=25, n_barcodes=96)
+    ...         .validate())
+
+    Sequential (equivalent):
+
+    >>> b = Barcodes(n_sites=2)
+    >>> b.add_positions(n_per_site=4)
+    >>> b.generate_barcodes(bc_len=25, n_barcodes=96)
+    >>> b.validate()
+
+    Export:
+
+    >>> b.view()
+    >>> b.write_order_form('order.csv')
+    """
+
+    def __init__(self, n_sites: int = None, custom_enzymes: list[str] | None = None):
+        """Initialize."""
         self.n_sites = n_sites
         self.sites = {}
         # default site enzymes (Assembly Plasmid):
@@ -158,7 +203,25 @@ class Barcodes:
             site_id = i + 1
             self.sites[site_id] = Site(site_id, self.site_enzymes[i], self.site_enzymes[i+1])
     
-    def add_positions(self, *, n_per_site):
+    def add_positions(self, *, n_per_site: int) -> 'Barcodes':
+        """Add multiple barcode positions per site for combinatorial designs.
+
+        Call before ``generate_barcodes()`` -- resets any existing barcodes.
+        Positions are labelled A-H; adjacent positions are joined by
+        automatically assigned 4 bp overhangs.
+
+        Parameters
+        ----------
+        n_per_site : int
+            Number of positions per site (1-8). Keyword-only.
+
+        Raises
+        ------
+        TypeError
+            If ``n_per_site`` is not a positive integer.
+        ValueError
+            If ``n_per_site > 8``.
+        """
         if not isinstance(n_per_site, int) or n_per_site < 1:
             raise TypeError('n_per_site must be a positive integer.')
         if n_per_site > 8:
@@ -175,7 +238,8 @@ class Barcodes:
                 }
         return self
 
-    def print_structure(self):
+    def print_structure(self) -> None:
+        """Print the site-and-enzyme layout to stdout."""
         print('----- ',end='')
         for i in range(self.n_sites):
             current_site = self.sites[i+1]
@@ -197,7 +261,21 @@ class Barcodes:
             segments.append(self._bc_pool.pop(index))
         return ''.join(segments)[:bc_len]
 
-    def generate_barcodes(self, bc_len, n_barcodes):
+    def generate_barcodes(self, bc_len: int, n_barcodes: int) -> 'Barcodes':
+        """Draw barcodes from the corpus and assemble forward/reverse oligos.
+
+        Barcodes are drawn without replacement from the ~20,000-member corpus,
+        so all barcodes in the library are unique. Values of ``bc_len > 60``
+        are built by concatenating multiple 60-mer corpus sequences. Resets
+        the validated status of the library.
+
+        Parameters
+        ----------
+        bc_len : int
+            Length of each barcode in bp.
+        n_barcodes : int
+            Number of barcodes to generate per position.
+        """
         print('Generating barcodes...')
         self._bc_len = bc_len
         self._validated = False
@@ -224,7 +302,27 @@ class Barcodes:
                 pos_data['forward_oligos'] = [f_pre + bc + f_suf for bc in pos_data['bc']]
                 pos_data['reverse_oligos'] = [r_pre + _rc(bc) + r_suf for bc in pos_data['bc']]
 
-    def add_fixed_sequence(self, seq, site, side):
+    def add_fixed_sequence(self, seq: str, site: int, side: str) -> 'Barcodes':
+        """Attach a constant flanking sequence to one side of a site.
+
+        Applies to all positions in the site, immediately adjacent to the
+        barcode. Calling again for the same site and side overwrites the
+        previous sequence. Resets the validated status.
+
+        Parameters
+        ----------
+        seq : str
+            Fixed DNA sequence to attach.
+        site : int
+            Site number to modify (1-indexed).
+        side : str
+            ``'left'`` or ``'right'``.
+
+        Raises
+        ------
+        ValueError
+            If ``side`` is not ``'left'`` or ``'right'``, or ``site`` does not exist.
+        """
         if side not in ['left', 'right']:
             raise ValueError('Side must be either "left" or "right".')
         if site not in self.sites:
@@ -234,7 +332,39 @@ class Barcodes:
         self._generate_oligos()
         return self
 
-    def validate(self, ignore_defaults=False, motifs=None):
+    def validate(self, ignore_defaults: bool = False, motifs: list | None = None) -> 'Barcodes':
+        """Screen barcodes for unwanted motifs and replace contaminated ones.
+
+        Each assembled barcode is checked for the presence of unwanted
+        sequences. Contaminated barcodes are replaced with clean draws from
+        the corpus. Prints the number of replacements made, or a confirmation
+        that no motifs were found. Marks the library as validated.
+
+        Each item in ``motifs`` may be a restriction-enzyme name (e.g.
+        ``'BsaI'``), a raw DNA sequence (e.g. ``'TATAAA'``), or a path to a
+        FASTA file (``.fa``, ``.fasta``, ``.fna``, optionally ``.gz``).
+
+        The default motif panel (used unless ``ignore_defaults=True``):
+        BsiWI, MreI, FseI, EcoRI, AvrII, BamHI, KpnI, NheI, PciI, XhoI,
+        SpeI, PluTI, NotI, AgeI, AsiSI, MluI, SbfI, MauBI.
+
+        Parameters
+        ----------
+        ignore_defaults : bool, optional
+            If True, skip the default restriction-enzyme panel. Default is False.
+        motifs : list, optional
+            Additional motifs to screen. Items may be enzyme names, raw DNA
+            sequences, or FASTA file paths (mixed freely). Default is None.
+
+        Raises
+        ------
+        ValueError
+            If a ``motifs`` item is neither a recognized enzyme name nor a
+            valid DNA sequence.
+        RuntimeError
+            If the corpus is exhausted before a clean replacement is found.
+            Usually means the motif comes from a fixed sequence or overhang.
+        """
         expanded = _expand_motif_list(motifs or [])
         names = ([] if ignore_defaults else _DEFAULT_AVOID_ENZYMES) + expanded
         self.avoid_seqs = _resolve_motifs(names)
@@ -275,7 +405,20 @@ class Barcodes:
                             n_replaced += 1
         return n_replaced
 
-    def view(self):
+    def view(self) -> 'pd.DataFrame':
+        """Return the library as a pandas DataFrame.
+
+        Columns appear conditionally based on what has been configured:
+
+        - ``site``, ``position``, ``barcode``: always present.
+        - ``barcode_with_fixed_seq``: after ``add_fixed_sequence()``.
+        - ``forward_oligo``, ``reverse_oligo``: after ``generate_barcodes()``.
+
+        Returns
+        -------
+        pandas.DataFrame
+            A copy of the library. Modifying it does not affect the library.
+        """
         has_fixed = any(
             site.fixed_left or site.fixed_right
             for site in self.sites.values()
@@ -311,7 +454,24 @@ class Barcodes:
             return pd.DataFrame(columns=cols)
         return pd.DataFrame(rows).copy()
 
-    def write_order_form(self, file):
+    def write_order_form(self, file: str) -> None:
+        """Export the oligo pool as a CSV ready for synthesis.
+
+        Writes two columns: ``opool_name`` and ``oligo_sequence``. Each
+        barcode produces two rows -- a forward oligo (``site{N}_f``) and a
+        reverse oligo (``site{N}_r``). Prints a warning if ``validate()``
+        has not been run since the last design change.
+
+        Parameters
+        ----------
+        file : str
+            Output CSV path.
+
+        Raises
+        ------
+        RuntimeError
+            If no oligos exist (call ``generate_barcodes()`` first).
+        """
         df = self.view()
         if 'forward_oligo' not in df.columns:
             raise RuntimeError('No oligo sequences found. Run generate_barcodes() first.')

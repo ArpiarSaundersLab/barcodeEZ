@@ -6,3 +6,6 @@ __pycache__
 site/
 .vscode
 */bc_gen
+.claude/
+.pytest_cache
+CLAUDE.md

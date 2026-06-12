@@ -1,14 +1,29 @@
-site_name: BarcodeEZ
-site_url: https://goodez.github.io/BarcodeEZ/
-repo_url: https://github.com/goodez/BarcodeEZ
+site_name: barcodeEZ
+site_url: https://goodez.github.io/barcodeEZ/
+repo_url: https://github.com/goodez/barcodeEZ
 edit_uri: edit/main/docs/
 
 theme:
-  name: readthedocs
+  name: material
+  logo: assets/barcodeEZ.png
+  palette:
+    - scheme: default
+      primary: teal
+      accent: teal
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - scheme: slate
+      primary: teal
+      accent: teal
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
   features:
     - navigation.instant
     - navigation.tracking
     - navigation.sections
+    - navigation.top
     - content.code.copy
     - content.tabs.link
     - search.suggest
@@ -20,14 +35,27 @@ nav:
       - Installation: getting-started/installation.md
       - Quickstart: getting-started/quickstart.md
   - Usage:
-      - CLI Reference: usage/cli.md
-  - Changelog: changelog.md
+      - Key Concepts: usage/concepts.md
+      - API Reference: usage/api.md
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          options:
+            docstring_style: numpy
+            show_source: false
+            members_order: source
+            show_root_heading: true
+            heading_level: 2
 
 markdown_extensions:
   - admonition
   - toc:
       permalink: true
   - pymdownx.details
-  - pymdownx.tabbed
+  - pymdownx.tabbed:
+      alternate_style: true
   - pymdownx.highlight
   - pymdownx.superfences
