@@ -8,7 +8,7 @@ The package allows design and creation of a site-aware `Barcodes` object. It is 
 
 - **Design** a library structure from restriction-enzyme boundaries — use the built-in default panel or supply your own enzymes.
 - **Add positions** within each site for combinatorial, multi-position barcoding (up to 8 positions per site), with automatically assigned optimized internal overhangs.
-- **Generate barcodes** of any length from a corpus of ~20,000 orthogonal 60-mers shipped with the package.
+- **Generate barcodes** of any length from a corpus of ~30,000 orthogonal 60-mers shipped with the package.
 - **Attach fixed sequences** to either end of a site.
 - **Validate** against restriction sites and undesired motifs, automatically swapping out any contaminated barcode.
 - **Inspect** the whole design as a pandas DataFrame.

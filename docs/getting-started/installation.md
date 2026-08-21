@@ -17,7 +17,7 @@ These are installed automatically:
 | [biopython](https://biopython.org/) (≥ 1.81) | Restriction-enzyme recognition sites |
 | [pandas](https://pandas.pydata.org/) | Tabular views and CSV export |
 
-The barcode corpus (~20,000 orthogonal 60-mers) ships with the package — no separate download is needed.
+The barcode corpus (~30,000 orthogonal 60-mers) ships with the package — no separate download is needed.
 
 ## Verify the installation
 

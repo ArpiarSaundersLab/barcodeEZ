@@ -53,7 +53,7 @@ At the **outer** edges of a site (the left edge of the first position, the right
 
 ## Barcodes and the corpus
 
-Raw barcode sequence is drawn from a **corpus** of ~20,000 orthogonal 60-mers bundled with the package. Each call to `generate_barcodes()` draws without replacement, so barcodes are unique across the whole library. Requesting a `bc_len` longer than 60 bp concatenates multiple corpus segments.
+Raw barcode sequence is drawn from a **corpus** of ~30,000 orthogonal 60-mers bundled with the package. Each call to `generate_barcodes()` draws without replacement, so barcodes are unique across the whole library. Requesting a `bc_len` longer than 60 bp concatenates multiple corpus segments.
 
 ## Fixed sequences
 

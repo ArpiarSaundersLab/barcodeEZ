@@ -5,7 +5,7 @@ import gzip
 from importlib.resources import files
 import pandas as pd
 
-with gzip.open(str(files('barcodeEZ').joinpath('corpus/20k_barcodes_60mers.fa.gz')), 'rt') as f:
+with gzip.open(str(files('barcodeEZ').joinpath('corpus/30k_barcodes_60mers.fa.gz')), 'rt') as f:
     bc_pool = []
     for i,line in enumerate(f):
         line = line.strip()
@@ -264,7 +264,7 @@ class Barcodes:
     def generate_barcodes(self, bc_len: int, n_barcodes: int) -> 'Barcodes':
         """Draw barcodes from the corpus and assemble forward/reverse oligos.
 
-        Barcodes are drawn without replacement from the ~20,000-member corpus,
+        Barcodes are drawn without replacement from the ~30,000-member corpus,
         so all barcodes in the library are unique. Values of ``bc_len > 60``
         are built by concatenating multiple 60-mer corpus sequences. Resets
         the validated status of the library.
