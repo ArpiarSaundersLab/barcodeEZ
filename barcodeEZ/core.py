@@ -454,18 +454,21 @@ class Barcodes:
             return pd.DataFrame(columns=cols)
         return pd.DataFrame(rows).copy()
 
-    def write_order_form(self, file: str) -> None:
+    def write_order_form(self, file: str, metadata: bool = False) -> None:
         """Export the oligo pool as a CSV ready for synthesis.
 
-        Writes two columns: ``opool_name`` and ``oligo_sequence``. Each
-        barcode produces two rows -- a forward oligo (``site{N}_f``) and a
-        reverse oligo (``site{N}_r``). Prints a warning if ``validate()``
-        has not been run since the last design change.
+        Writes ``opool_name`` and ``oligo_sequence`` columns. Each barcode
+        produces two rows -- a forward oligo (``site{N}_f``) and a reverse
+        oligo (``site{N}_r``). Prints a warning if ``validate()`` has not
+        been run since the last design change.
 
         Parameters
         ----------
         file : str
             Output CSV path.
+        metadata : bool, optional
+            If True, include ``site``, ``position``, and ``barcode`` columns
+            alongside the oligo sequences. Default is False.
 
         Raises
         ------
@@ -481,6 +484,12 @@ class Barcodes:
         order_rows = []
         for _, row in df.iterrows():
             name = f"site{row['site']}"
-            order_rows.append({'opool_name': f'{name}_f', 'oligo_sequence': row['forward_oligo']})
-            order_rows.append({'opool_name': f'{name}_r', 'oligo_sequence': row['reverse_oligo']})
+            fwd = {'opool_name': f'{name}_f', 'oligo_sequence': row['forward_oligo']}
+            rev = {'opool_name': f'{name}_r', 'oligo_sequence': row['reverse_oligo']}
+            if metadata:
+                meta = {'site': row['site'], 'position': row['position'], 'barcode': row['barcode']}
+                fwd = {**fwd, **meta}
+                rev = {**rev, **meta}
+            order_rows.append(fwd)
+            order_rows.append(rev)
         pd.DataFrame(order_rows).to_csv(file, index=False)
