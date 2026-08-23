@@ -78,4 +78,4 @@ The forward and reverse oligos are reverse complements designed to anneal into a
 
 `validate()` checks every assembled barcode (barcode + any fixed sequences) for unwanted **motifs** — restriction sites or arbitrary sequences that must not appear inside the insert. Any barcode containing a flagged motif is replaced with a fresh draw from the corpus, repeating until it is clean.
 
-If a motif comes from a **fixed sequence or overhang** rather than the barcode itself, no replacement can ever clear it, and `validate()` raises a `RuntimeError` once the corpus is exhausted. See [`validate()`](api.md#validate) for the default motif panel and how to extend it.
+If a motif comes from a **fixed sequence or overhang** rather than the barcode itself, no replacement can ever clear it, and `validate()` raises a `RuntimeError` once the corpus is exhausted. See [`validate()`](api.md#barcodeEZ.Barcodes.validate) for the default motif panel and how to extend it.

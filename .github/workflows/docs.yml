@@ -1,0 +1,33 @@
+name: docs
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      # editable install so mkdocstrings can import barcodeEZ and read the
+      # live docstrings out of core.py
+      - run: pip install -e ".[docs]"
+
+      # ghp-import, which gh-deploy shells out to, commits to gh-pages and
+      # needs an identity
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - run: mkdocs gh-deploy --force

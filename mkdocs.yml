@@ -1,6 +1,6 @@
 site_name: barcodeEZ
-site_url: https://goodez.github.io/barcodeEZ/
-repo_url: https://github.com/goodez/barcodeEZ
+site_url: https://arpiarsaunderslab.github.io/barcodeEZ/
+repo_url: https://github.com/ArpiarSaundersLab/barcodeEZ
 edit_uri: edit/main/docs/
 
 theme:
