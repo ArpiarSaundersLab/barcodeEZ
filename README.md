@@ -1,6 +1,6 @@
 # barcodeEZ
 
-<img src="docs/assets/barcodeEZ.png" alt="barcodeEZ" width="400"/>
+<img src="https://raw.githubusercontent.com/ArpiarSaundersLab/barcodeEZ/main/docs/assets/barcodeEZ.png" alt="barcodeEZ" width="400"/>
 
 **barcodeEZ** is a Python package for designing complex, combinatorial DNA barcode libraries for molecular cloning.
 
@@ -46,10 +46,10 @@ All functionality is accessed through the `Barcodes(n_sites, custom_enzymes=None
 | `add_fixed_sequence(seq, site, side)` | Attach a fixed flanking sequence to a site |
 | `validate(ignore_defaults=False, motifs=None)` | Screen and replace barcodes containing unwanted motifs |
 | `view()` | Return the full library as a pandas DataFrame |
-| `write_order_form(file)` | Export the oligo pool as CSV |
+| `write_order_form(file, metadata=False)` | Export the oligo pool as CSV; `metadata=True` adds `site`, `position`, and `barcode` columns |
 | `print_structure()` | Print the site/enzyme layout |
 
-See the [full documentation](https://goodez.github.io/barcodeEZ/) for parameter details and examples.
+See the [full documentation](https://arpiarsaunderslab.github.io/barcodeEZ/) for parameter details and examples.
 
 ## Requirements
 

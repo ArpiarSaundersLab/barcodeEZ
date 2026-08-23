@@ -1,6 +1,6 @@
 # Installation
 
-barcodeEZ requires **Python ≥ 3.9**.
+barcodeEZ requires **Python ≥ 3.10**.
 
 ## Install with pip
 

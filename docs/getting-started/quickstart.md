@@ -72,6 +72,20 @@ site1_r,GATCCACGTAGCGTTACCGTGAACGG
 ...
 ```
 
+Pass `metadata=True` to also record which site, position, and barcode each oligo
+came from — useful for tracking the pool back to the design after synthesis.
+
+```python
+b.write_order_form('library.csv', metadata=True)
+```
+
+```text
+opool_name,oligo_sequence,site,position,barcode
+site1_f,AATTCCGTTCACGGTAACGCTACGTG,1,A,CGTTCACGGTAACGCTACGT
+site1_r,GATCCACGTAGCGTTACCGTGAACGG,1,A,CGTTCACGGTAACGCTACGT
+...
+```
+
 ## Going further: positions and fixed sequences
 
 One can customize libraries further by adding internal positions within sites. Positions are connected via optimized 4 bp overhangs. This allows the total number of combined barcodes to expand beyond n = 6. Positions should be added before barcode generation, as the method will wipe clean any barcodes in the object. 
