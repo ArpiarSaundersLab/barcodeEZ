@@ -1,0 +1,4 @@
+# Ship the test suite complete. setuptools' sdist defaults only pick up
+# tests/test*.py, which leaves behind conftest.py and the reference order
+# CSVs those tests load -- the suite then fails from an unpacked sdist.
+recursive-include tests *.py *.csv

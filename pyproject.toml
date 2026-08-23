@@ -12,7 +12,7 @@ authors = [
 ]
 requires-python = ">=3.10"
 license = "MIT"
-license-files = ["LICENSE]
+license-files = ["LICENSE"]
 keywords = ["barcode", "oligo", "cloning", "synthetic-biology", "sequencing"]
 classifiers = [
     "Programming Language :: Python :: 3",
@@ -30,7 +30,7 @@ test = ["pytest"]
 docs = ["mkdocs", "mkdocs-material", "mkdocstrings[python]"]
 
 [project.urls]
-repository = "https://https://github.com/ArpiarSaundersLab/barcodeEZ"
+repository = "https://github.com/ArpiarSaundersLab/barcodeEZ"
 
 [tool.setuptools]
 packages = ["barcodeEZ"]
